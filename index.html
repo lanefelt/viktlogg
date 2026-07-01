@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Viktlogg</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F5F7F9;
+    --panel:#FFFFFF;
+    --ink:#1A2333;
+    --ink-soft:#5B6478;
+    --line:#E2E6EC;
+    --morgon:#E8A33D;
+    --morgon-soft:#FBE8C8;
+    --kvall:#3B4C8C;
+    --kvall-soft:#DDE2F2;
+    --sage:#5E8B76;
+    --sage-soft:#DCEBE3;
+    --danger:#C75450;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'JetBrains Mono',monospace;}
+  header{
+    padding:28px 20px 18px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(135deg, var(--morgon-soft) 0%, var(--bg) 35%, var(--bg) 65%, var(--kvall-soft) 100%);
+  }
+  header h1{
+    margin:0 0 4px;
+    font-size:1.5rem;
+    letter-spacing:-0.02em;
+  }
+  header p{margin:0;color:var(--ink-soft);font-size:0.9rem;}
+  main{max-width:760px;margin:0 auto;padding:18px 16px 60px;}
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:16px;
+  }
+  .card h2{
+    margin:0 0 14px;
+    font-size:0.78rem;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--ink-soft);
+    font-weight:600;
+  }
+  #banner{
+    display:none;
+    background:#FFF4E5;
+    border:1px solid #F0C987;
+    border-radius:var(--radius);
+    padding:14px 16px;
+    margin-bottom:16px;
+    font-size:0.88rem;
+    line-height:1.5;
+  }
+  #banner code{background:#fff;padding:1px 5px;border-radius:4px;}
+
+  /* Entry form */
+  .toggle-group{display:flex;gap:8px;margin-bottom:12px;}
+  .toggle-btn{
+    flex:1;
+    padding:12px;
+    border-radius:10px;
+    border:1.5px solid var(--line);
+    background:var(--panel);
+    font-family:inherit;
+    font-size:0.92rem;
+    font-weight:600;
+    cursor:pointer;
+    color:var(--ink-soft);
+    transition:all .15s;
+  }
+  .toggle-btn.active.morgon{background:var(--morgon-soft);border-color:var(--morgon);color:#7A5419;}
+  .toggle-btn.active.kvall{background:var(--kvall-soft);border-color:var(--kvall);color:var(--kvall);}
+  .row{display:flex;gap:10px;margin-bottom:10px;}
+  .field{flex:1;display:flex;flex-direction:column;gap:5px;}
+  label{font-size:0.78rem;color:var(--ink-soft);font-weight:500;}
+  input,select{
+    font-family:inherit;
+    font-size:1rem;
+    padding:10px 12px;
+    border-radius:9px;
+    border:1.5px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+  }
+  input:focus,select:focus,.toggle-btn:focus-visible{
+    outline:2px solid var(--kvall);
+    outline-offset:1px;
+  }
+  .weight-input{font-family:'JetBrains Mono',monospace;font-size:1.3rem;font-weight:700;}
+  button.primary{
+    width:100%;
+    padding:13px;
+    border:none;
+    border-radius:10px;
+    background:var(--ink);
+    color:#fff;
+    font-family:inherit;
+    font-size:0.95rem;
+    font-weight:600;
+    cursor:pointer;
+    margin-top:4px;
+  }
+  button.primary:active{opacity:0.85;}
+
+  /* Stats */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .stat{
+    border-radius:10px;
+    padding:12px 14px;
+    background:var(--bg);
+  }
+  .stat .label{font-size:0.74rem;color:var(--ink-soft);margin-bottom:4px;}
+  .stat .value{font-family:'JetBrains Mono',monospace;font-size:1.35rem;font-weight:700;}
+  .stat .sub{font-size:0.72rem;color:var(--ink-soft);margin-top:2px;}
+  .stat.morgon{border-left:3px solid var(--morgon);}
+  .stat.kvall{border-left:3px solid var(--kvall);}
+  .stat.sage{border-left:3px solid var(--sage);background:var(--sage-soft);}
+
+  /* Chart */
+  .legend{display:flex;gap:16px;margin-bottom:10px;font-size:0.78rem;color:var(--ink-soft);}
+  .legend span{display:inline-flex;align-items:center;gap:5px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+
+  /* Filters / table */
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .weekday-picker{display:flex;gap:4px;flex-wrap:wrap;}
+  .weekday-picker button{
+    width:38px;height:34px;
+    border-radius:8px;border:1.5px solid var(--line);
+    background:#fff;font-family:inherit;font-size:0.78rem;font-weight:600;
+    color:var(--ink-soft);cursor:pointer;
+  }
+  .weekday-picker button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  table{width:100%;border-collapse:collapse;font-size:0.88rem;}
+  th{text-align:left;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);padding:6px 8px;border-bottom:1px solid var(--line);}
+  td{padding:8px;border-bottom:1px solid var(--line);}
+  td.weight{font-family:'JetBrains Mono',monospace;font-weight:600;}
+  tr.morgon td:first-child{border-left:3px solid var(--morgon);}
+  tr.kvall td:first-child{border-left:3px solid var(--kvall);}
+  .del-btn{background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.85rem;padding:4px 6px;}
+  .empty{color:var(--ink-soft);font-size:0.88rem;padding:8px 0;}
+
+  .target-row{display:flex;gap:10px;align-items:flex-end;}
+  .target-row .field{flex:1;}
+  .target-row button{width:auto;padding:10px 16px;margin:0;}
+
+  footer{text-align:center;color:var(--ink-soft);font-size:0.76rem;padding:20px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Viktlogg</h1>
+  <p>Morgon &amp; kväll, separat. Trend före brus.</p>
+</header>
+
+<main>
+
+  <div id="banner">
+    <strong>Konfiguration saknas.</strong> Öppna index.html, hitta sektionen
+    <code>const CONFIG</code> högst upp i script-taggen, och fyll i din
+    Supabase Project URL och anon-nyckel (Project Settings → API). Spara och
+    ladda om sidan.
+  </div>
+
+  <div id="error-box" style="display:none; background:#FDEDED; border:1px solid var(--danger); color:#8A2E2B; padding:12px 14px; border-radius:var(--radius); margin-bottom:16px; font-size:0.85rem; white-space:pre-wrap; font-family:'JetBrains Mono',monospace;"></div>
+
+  <!-- Entry form -->
+  <div class="card">
+    <h2>Ny mätning</h2>
+    <div class="toggle-group">
+      <button type="button" class="toggle-btn morgon active" id="btn-morgon" data-type="morgon">☀ Morgon</button>
+      <button type="button" class="toggle-btn kvall" id="btn-kvall" data-type="kvall">🌙 Kväll</button>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="in-date">Datum</label>
+        <input type="date" id="in-date">
+      </div>
+      <div class="field">
+        <label for="in-weight">Vikt (kg)</label>
+        <input type="number" id="in-weight" class="weight-input" step="0.1" placeholder="0.0" inputmode="decimal">
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label for="in-note">Anteckning (valfritt)</label>
+      <input type="text" id="in-note" placeholder="t.ex. mycket salt igår">
+    </div>
+    <button class="primary" id="save-btn">Spara mätning</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="card">
+    <h2>Status</h2>
+    <div class="stat-grid" id="stats"></div>
+  </div>
+
+  <!-- Chart -->
+  <div class="card">
+    <h2>Trend</h2>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--morgon)"></i>Morgon (7d-snitt)</span>
+      <span><i class="dot" style="background:var(--kvall)"></i>Kväll (7d-snitt)</span>
+      <span><i class="dot" style="background:var(--sage)"></i>Prognos</span>
+    </div>
+    <canvas id="chart" height="220"></canvas>
+  </div>
+
+  <!-- Target weight -->
+  <div class="card">
+    <h2>Målvikt</h2>
+    <div class="target-row">
+      <div class="field">
+        <label for="in-target">Mål (kg)</label>
+        <input type="number" id="in-target" class="weight-input" step="0.1" placeholder="0.0">
+      </div>
+      <button class="primary" id="save-target-btn" style="background:var(--sage);">Spara mål</button>
+    </div>
+  </div>
+
+  <!-- Filters + report table -->
+  <div class="card">
+    <h2>Rapport &amp; filter</h2>
+    <div class="filter-row">
+      <div class="field">
+        <label for="f-from">Från</label>
+        <input type="date" id="f-from">
+      </div>
+      <div class="field">
+        <label for="f-to">Till</label>
+        <input type="date" id="f-to">
+      </div>
+      <div class="field">
+        <label for="f-type">Typ</label>
+        <select id="f-type">
+          <option value="all">Alla</option>
+          <option value="morgon">Morgon</option>
+          <option value="kväll">Kväll</option>
+        </select>
+      </div>
+    </div>
+    <label style="display:block;margin-bottom:6px;">Veckodagar</label>
+    <div class="weekday-picker" id="weekday-picker"></div>
+    <div style="height:14px;"></div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr><th>Datum</th><th>Dag</th><th>Typ</th><th>Vikt</th><th>Notering</th><th></th></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+      <div class="empty" id="table-empty" style="display:none;">Inga mätningar i valt intervall.</div>
+    </div>
+  </div>
+
+</main>
+
+<footer>Din data lagras i din egen Supabase-databas. Länken till appen är din enda åtkomstkontroll.</footer>
+
+<script>
+// ============================================================
+// KONFIGURATION — fyll i dessa två rader från ditt Supabase-projekt
+// (Project Settings -> API -> Project URL / anon public key)
+// ============================================================
+const CONFIG = {
+  SUPABASE_URL: "https://yiqcwsecmbqxludsvesv.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_hwBxOUL3A4BcWZWxqZL-gQ_97-_3YxP"
+};
+// ============================================================
+
+let supa = null;
+let entries = [];      // {id, date, time_of_day, weight_kg, note}
+let targetWeight = null;
+let chart = null;
+let selectedType = 'morgon';
+const weekdayNames = ['Sön','Mån','Tis','Ons','Tor','Fre','Lör'];
+let activeWeekdays = new Set([0,1,2,3,4,5,6]);
+
+function showError(context, err){
+  const box = document.getElementById('error-box');
+  box.style.display = 'block';
+  box.textContent = context + ':\n' + (err && err.message ? err.message : JSON.stringify(err));
+  box.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function init(){
+  if(!CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.includes('HÄR')){
+    document.getElementById('banner').style.display = 'block';
+    return;
+  }
+  supa = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+  document.getElementById('in-date').valueAsDate = new Date();
+  document.getElementById('btn-morgon').addEventListener('click', () => setType('morgon'));
+  document.getElementById('btn-kvall').addEventListener('click', () => setType('kväll'));
+  document.getElementById('save-btn').addEventListener('click', saveEntry);
+  document.getElementById('save-target-btn').addEventListener('click', saveTarget);
+  document.getElementById('f-from').addEventListener('change', renderTable);
+  document.getElementById('f-to').addEventListener('change', renderTable);
+  document.getElementById('f-type').addEventListener('change', renderTable);
+
+  buildWeekdayPicker();
+  loadAll();
+}
+
+function setType(t){
+  selectedType = t;
+  document.getElementById('btn-morgon').classList.toggle('active', t==='morgon');
+  document.getElementById('btn-kvall').classList.toggle('active', t==='kväll');
+}
+
+function buildWeekdayPicker(){
+  const el = document.getElementById('weekday-picker');
+  weekdayNames.forEach((name, idx) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.className = 'active';
+    b.addEventListener('click', () => {
+      if(activeWeekdays.has(idx)){ activeWeekdays.delete(idx); b.classList.remove('active'); }
+      else { activeWeekdays.add(idx); b.classList.add('active'); }
+      renderTable();
+    });
+    el.appendChild(b);
+  });
+}
+
+async function loadAll(){
+  const { data: weighIns, error: e1 } = await supa.from('weigh_ins').select('*').order('date', {ascending:true});
+  if(e1){ showError('Kunde inte hämta data', e1); return; }
+  entries = weighIns;
+
+  const { data: settings, error: e2 } = await supa.from('settings').select('*').eq('id',1).single();
+  if(!e2 && settings){
+    targetWeight = settings.target_weight;
+    document.getElementById('in-target').value = targetWeight ?? '';
+  }
+
+  renderStats();
+  renderChart();
+  renderTable();
+}
+
+async function saveEntry(){
+  const date = document.getElementById('in-date').value;
+  const weight = parseFloat(document.getElementById('in-weight').value);
+  const note = document.getElementById('in-note').value.trim();
+  if(!date || isNaN(weight)){ alert('Fyll i datum och vikt.'); return; }
+
+  const { error } = await supa.from('weigh_ins').insert({
+    date, time_of_day: selectedType, weight_kg: weight, note: note || null
+  });
+  if(error){ showError('Kunde inte spara mätning', error); return; }
+
+  document.getElementById('in-weight').value = '';
+  document.getElementById('in-note').value = '';
+  await loadAll();
+}
+
+async function deleteEntry(id){
+  if(!confirm('Ta bort den här mätningen?')) return;
+  const { error } = await supa.from('weigh_ins').delete().eq('id', id);
+  if(error){ showError('Kunde inte ta bort mätning', error); return; }
+  await loadAll();
+}
+
+async function saveTarget(){
+  const val = parseFloat(document.getElementById('in-target').value);
+  if(isNaN(val)){ alert('Ange en giltig målvikt.'); return; }
+  const { error } = await supa.from('settings').upsert({ id:1, target_weight: val });
+  if(error){ showError('Kunde inte spara målvikt', error); return; }
+  targetWeight = val;
+  renderStats();
+  renderChart();
+}
+
+// ---------- Stats helpers ----------
+
+function toOrdinal(dateStr){
+  return Math.floor(new Date(dateStr + 'T00:00:00').getTime() / 86400000);
+}
+
+function seriesFor(type){
+  return entries.filter(e => e.time_of_day === type).sort((a,b)=> a.date.localeCompare(b.date));
+}
+
+// 7-day trailing moving average, keyed by each entry's own date
+function movingAverage(series, windowDays=7){
+  return series.map((e, i) => {
+    const t = toOrdinal(e.date);
+    const windowVals = series.filter(s => {
+      const st = toOrdinal(s.date);
+      return st <= t && st > t - windowDays;
+    }).map(s => s.weight_kg);
+    const avg = windowVals.reduce((a,b)=>a+b,0) / windowVals.length;
+    return { date: e.date, ordinal: t, value: avg };
+  });
+}
+
+function linearRegression(points){
+  // points: [{ordinal, value}]
+  const n = points.length;
+  if(n < 2) return null;
+  const sumX = points.reduce((a,p)=>a+p.ordinal,0);
+  const sumY = points.reduce((a,p)=>a+p.value,0);
+  const sumXY = points.reduce((a,p)=>a+p.ordinal*p.value,0);
+  const sumXX = points.reduce((a,p)=>a+p.ordinal*p.ordinal,0);
+  const denom = (n*sumXX - sumX*sumX);
+  if(denom === 0) return null;
+  const slope = (n*sumXY - sumX*sumY) / denom;
+  const intercept = (sumY - slope*sumX) / n;
+  return { slope, intercept };
+}
+
+function renderStats(){
+  const grid = document.getElementById('stats');
+  grid.innerHTML = '';
+
+  const morgon = seriesFor('morgon');
+  const kvall = seriesFor('kväll');
+
+  const latestM = morgon[morgon.length-1];
+  const firstM = morgon[0];
+  const maM = movingAverage(morgon);
+  const reg = linearRegression(maM);
+
+  addStat(grid, 'morgon', 'Senaste morgonvikt', latestM ? latestM.weight_kg.toFixed(1)+' kg' : '–', latestM ? latestM.date : '');
+  addStat(grid, 'kvall', 'Senaste kvällsvikt', kvall.length ? kvall[kvall.length-1].weight_kg.toFixed(1)+' kg' : '–', kvall.length ? kvall[kvall.length-1].date : '');
+
+  if(firstM && latestM){
+    const change = latestM.weight_kg - firstM.weight_kg;
+    addStat(grid, '', 'Förändring totalt', (change>=0?'+':'')+change.toFixed(1)+' kg', 'sedan '+firstM.date);
+  } else {
+    addStat(grid, '', 'Förändring totalt', '–', '');
+  }
+
+  if(reg){
+    const weeklyRate = reg.slope * 7;
+    addStat(grid, '', 'Veckotakt (morgon)', weeklyRate.toFixed(2)+' kg/v', weeklyRate < 0 ? 'minskande' : (weeklyRate > 0 ? 'ökande' : 'stabil'));
+  } else {
+    addStat(grid, '', 'Veckotakt (morgon)', '–', 'för få mätningar än');
+  }
+
+  // Forecast
+  if(reg && targetWeight != null && reg.slope < 0 && maM.length >= 4){
+    const targetOrdinal = (targetWeight - reg.intercept) / reg.slope;
+    const todayOrdinal = toOrdinal(new Date().toISOString().slice(0,10));
+    const daysLeft = Math.round(targetOrdinal - todayOrdinal);
+    if(daysLeft > 0 && daysLeft < 3650){
+      const forecastDate = new Date((todayOrdinal*86400000));
+      forecastDate.setDate(forecastDate.getDate() + daysLeft);
+      addStat(grid, 'sage', 'Prognos: målvikt nådd', forecastDate.toISOString().slice(0,10), Math.round(daysLeft/7)+' veckor kvar');
+    } else {
+      addStat(grid, 'sage', 'Prognos', '–', 'målvikt redan nådd eller trend pekar fel håll');
+    }
+  } else {
+    addStat(grid, 'sage', 'Prognos', '–', targetWeight==null ? 'sätt en målvikt nedan' : 'behöver tydligare nedåtgående trend');
+  }
+}
+
+function addStat(grid, cls, label, value, sub){
+  const div = document.createElement('div');
+  div.className = 'stat' + (cls ? ' '+cls : '');
+  div.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div>`;
+  grid.appendChild(div);
+}
+
+// ---------- Chart ----------
+
+function renderChart(){
+  const morgon = seriesFor('morgon');
+  const kvall = seriesFor('kväll');
+  const maM = movingAverage(morgon);
+  const maK = movingAverage(kvall);
+  const reg = linearRegression(maM);
+
+  // Unified date axis
+  const allDates = Array.from(new Set([...maM.map(p=>p.date), ...maK.map(p=>p.date)])).sort();
+
+  const morgonData = allDates.map(d => { const p = maM.find(x=>x.date===d); return p ? p.value : null; });
+  const kvallData = allDates.map(d => { const p = maK.find(x=>x.date===d); return p ? p.value : null; });
+
+  // Forecast line: from last morgon MA point to target (or 60 days ahead if no target)
+  let forecastLabels = [];
+  let forecastData = [];
+  if(reg && maM.length >= 4){
+    const lastPoint = maM[maM.length-1];
+    let endOrdinal = lastPoint.ordinal + 60;
+    if(targetWeight != null && reg.slope < 0){
+      const targetOrdinal = (targetWeight - reg.intercept) / reg.slope;
+      if(targetOrdinal > lastPoint.ordinal) endOrdinal = targetOrdinal;
+    }
+    const steps = 6;
+    for(let i=0;i<=steps;i++){
+      const ord = lastPoint.ordinal + (endOrdinal-lastPoint.ordinal)*(i/steps);
+      const dateStr = new Date(ord*86400000).toISOString().slice(0,10);
+      forecastLabels.push(dateStr);
+      forecastData.push(reg.intercept + reg.slope*ord);
+    }
+  }
+
+  const combinedLabels = Array.from(new Set([...allDates, ...forecastLabels])).sort();
+  const morgonAligned = combinedLabels.map(d => { const i = allDates.indexOf(d); return i>=0 ? morgonData[i] : null; });
+  const kvallAligned = combinedLabels.map(d => { const i = allDates.indexOf(d); return i>=0 ? kvallData[i] : null; });
+  const forecastAligned = combinedLabels.map(d => { const i = forecastLabels.indexOf(d); return i>=0 ? forecastData[i] : null; });
+
+  if(chart) chart.destroy();
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: combinedLabels,
+      datasets: [
+        { label:'Morgon (7d-snitt)', data: morgonAligned, borderColor:'#E8A33D', backgroundColor:'#E8A33D', tension:0.3, spanGaps:true, pointRadius:2, borderWidth:2 },
+        { label:'Kväll (7d-snitt)', data: kvallAligned, borderColor:'#3B4C8C', backgroundColor:'#3B4C8C', tension:0.3, spanGaps:true, pointRadius:2, borderWidth:2 },
+        { label:'Prognos', data: forecastAligned, borderColor:'#5E8B76', backgroundColor:'#5E8B76', borderDash:[6,4], tension:0, spanGaps:true, pointRadius:0, borderWidth:2 }
+      ]
+    },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ display:false } },
+      scales:{ y:{ title:{display:true, text:'kg'} } },
+      interaction:{ mode:'index', intersect:false }
+    }
+  });
+}
+
+// ---------- Table / report ----------
+
+function renderTable(){
+  const from = document.getElementById('f-from').value;
+  const to = document.getElementById('f-to').value;
+  const typeFilter = document.getElementById('f-type').value;
+
+  let rows = entries.filter(e => {
+    if(from && e.date < from) return false;
+    if(to && e.date > to) return false;
+    if(typeFilter !== 'all' && e.time_of_day !== typeFilter) return false;
+    const weekday = new Date(e.date+'T00:00:00').getDay();
+    if(!activeWeekdays.has(weekday)) return false;
+    return true;
+  }).sort((a,b)=> b.date.localeCompare(a.date));
+
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  document.getElementById('table-empty').style.display = rows.length ? 'none' : 'block';
+
+  rows.forEach(e => {
+    const tr = document.createElement('tr');
+    tr.className = e.time_of_day === 'morgon' ? 'morgon' : 'kvall';
+    const weekday = weekdayNames[new Date(e.date+'T00:00:00').getDay()];
+    tr.innerHTML = `
+      <td>${e.date}</td>
+      <td>${weekday}</td>
+      <td>${e.time_of_day === 'morgon' ? '☀ Morgon' : '🌙 Kväll'}</td>
+      <td class="weight">${e.weight_kg.toFixed(1)} kg</td>
+      <td>${e.note ? e.note : ''}</td>
+      <td><button class="del-btn" data-id="${e.id}">Ta bort</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => deleteEntry(parseInt(btn.dataset.id)));
+  });
+}
+
+init();
+</script>
+</body>
+</html>

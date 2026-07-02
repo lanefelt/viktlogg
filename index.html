@@ -278,8 +278,8 @@
 
 <script>
   (function(){
-  const pw = prompt("Alex123");
-  if(pw !== "DITT_LÖSENORD_HÄR"){
+  const pw = prompt("Ange lösenord:");
+  if(pw !== "Alex123"){
     document.body.innerHTML = "<h1 style='font-family:sans-serif;text-align:center;margin-top:40vh;'>Fel lösenord</h1>";
     throw new Error("Fel lösenord");
   }

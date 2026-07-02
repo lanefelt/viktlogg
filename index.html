@@ -277,6 +277,13 @@
 <footer>Din data lagras i din egen Supabase-databas. Länken till appen är din enda åtkomstkontroll.</footer>
 
 <script>
+  (function(){
+  const pw = prompt("Alex123");
+  if(pw !== "DITT_LÖSENORD_HÄR"){
+    document.body.innerHTML = "<h1 style='font-family:sans-serif;text-align:center;margin-top:40vh;'>Fel lösenord</h1>";
+    throw new Error("Fel lösenord");
+  }
+})();
 // ============================================================
 // KONFIGURATION — fyll i dessa två rader från ditt Supabase-projekt
 // (Project Settings -> API -> Project URL / anon public key)

@@ -176,6 +176,18 @@
 </head>
 <body>
 
+<div id="lock-screen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--bg); padding:20px;">
+  <div style="background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:28px; max-width:320px; width:100%; text-align:center;">
+    <div style="font-size:2rem; margin-bottom:10px;">🔒</div>
+    <h2 style="margin:0 0 14px; font-size:1rem; text-transform:none; letter-spacing:0; color:var(--ink);">Ange lösenord</h2>
+    <input type="password" id="lock-input" style="width:100%; margin-bottom:10px; text-align:center;" autofocus>
+    <button class="primary" id="lock-btn">Lås upp</button>
+    <div id="lock-error" style="display:none; color:var(--danger); font-size:0.82rem; margin-top:10px;">Fel lösenord.</div>
+  </div>
+</div>
+
+<div id="app-content" style="display:none;">
+
 <header>
   <h1>Viktlogg</h1>
   <p>Morgon &amp; kväll, separat. Trend före brus.</p>
@@ -197,7 +209,7 @@
     <h2>Ny mätning</h2>
     <div class="toggle-group">
       <button type="button" class="toggle-btn morgon active" id="btn-morgon" data-type="morgon">☀ Morgon</button>
-      <button type="button" class="toggle-btn kvall" id="btn-kvall" data-type="kvall">🌙 Kväll</button>
+      <button type="button" class="toggle-btn kvall" id="btn-kvall" data-type="kväll">🌙 Kväll</button>
     </div>
     <div class="row">
       <div class="field">
@@ -225,11 +237,6 @@
   <!-- Chart -->
   <div class="card">
     <h2>Trend</h2>
-    <div class="legend">
-      <span><i class="dot" style="background:var(--morgon)"></i>Morgon (7d-snitt)</span>
-      <span><i class="dot" style="background:var(--kvall)"></i>Kväll (7d-snitt)</span>
-      <span><i class="dot" style="background:var(--sage)"></i>Prognos</span>
-    </div>
     <canvas id="chart" height="220"></canvas>
   </div>
 
@@ -284,23 +291,46 @@
 
 <footer>Din data lagras i din egen Supabase-databas. Länken till appen är din enda åtkomstkontroll.</footer>
 
+</div>
+<!-- /app-content -->
+
 <script>
-  (function(){
-  const pw = prompt("ANGE LÖSENORD:");
-  if(pw !== "aa"){
-    document.body.innerHTML = "<h1 style='font-family:sans-serif;text-align:center;margin-top:40vh;'>Fel lösenord</h1>";
-    throw new Error("Fel lösenord");
-  }
-})();
 // ============================================================
 // KONFIGURATION — fyll i dessa två rader från ditt Supabase-projekt
 // (Project Settings -> API -> Project URL / anon public key)
 // ============================================================
 const CONFIG = {
   SUPABASE_URL: "https://yiqcwsecmbqxludsvesv.supabase.co",
-  SUPABASE_ANON_KEY: "sb_publishable_hwBxOUL3A4BcWZWxqZL-gQ_97-_3YxP"
+  SUPABASE_ANON_KEY: "sb_publishable_hwBxOUL3A4BcWZWxqZL-gQ_97-_3YxP",
+  PASSWORD: "aa"
 };
 // ============================================================
+
+function checkPassword(){
+  const val = document.getElementById('lock-input').value;
+  const errorEl = document.getElementById('lock-error');
+  if(val === CONFIG.PASSWORD){
+    document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('app-content').style.display = 'block';
+    sessionStorage.setItem('viktlogg-unlocked', '1');
+    init();
+  } else {
+    errorEl.style.display = 'block';
+    document.getElementById('lock-input').value = '';
+  }
+}
+
+document.getElementById('lock-btn').addEventListener('click', checkPassword);
+document.getElementById('lock-input').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') checkPassword();
+});
+
+// Om redan upplåst tidigare i den här fliken/sessionen, hoppa över låsskärmen
+if(sessionStorage.getItem('viktlogg-unlocked') === '1'){
+  document.getElementById('lock-screen').style.display = 'none';
+  document.getElementById('app-content').style.display = 'block';
+  init();
+}
 
 let supa = null;
 let entries = [];      // {id, date, time_of_day, weight_kg, note}
@@ -329,9 +359,9 @@ function init(){
   document.getElementById('btn-kvall').addEventListener('click', () => setType('kväll'));
   document.getElementById('save-btn').addEventListener('click', saveEntry);
   document.getElementById('save-target-btn').addEventListener('click', saveTarget);
-  document.getElementById('f-from').addEventListener('change', renderTable);
-  document.getElementById('f-to').addEventListener('change', renderTable);
-  document.getElementById('f-type').addEventListener('change', renderTable);
+  document.getElementById('f-from').addEventListener('change', () => { renderTable(); renderChart(); });
+  document.getElementById('f-to').addEventListener('change', () => { renderTable(); renderChart(); });
+  document.getElementById('f-type').addEventListener('change', () => { renderTable(); renderChart(); });
 
   buildWeekdayPicker();
   loadAll();
@@ -489,6 +519,35 @@ function renderStats(){
   } else {
     addStat(grid, 'sage', 'Prognos', '–', targetWeight==null ? 'sätt en målvikt nedan' : 'behöver tydligare nedåtgående trend');
   }
+
+  // Kvar till mål
+  if(targetWeight != null && latestM){
+    const remaining = latestM.weight_kg - targetWeight;
+    addStat(grid, '', 'Kvar till mål', remaining.toFixed(1)+' kg', remaining <= 0 ? 'mål nått' : 'att gå');
+  } else {
+    addStat(grid, '', 'Kvar till mål', '–', 'sätt en målvikt nedan');
+  }
+
+  // Lägsta vikt hittills
+  if(morgon.length){
+    const lowest = morgon.reduce((min, e) => e.weight_kg < min.weight_kg ? e : min, morgon[0]);
+    addStat(grid, '', 'Lägsta vikt hittills', lowest.weight_kg.toFixed(1)+' kg', lowest.date);
+  } else {
+    addStat(grid, '', 'Lägsta vikt hittills', '–', '');
+  }
+
+  // Genomsnittlig dygnssvängning (kväll - morgon, samma datum)
+  const swings = [];
+  morgon.forEach(m => {
+    const k = kvall.find(e => e.date === m.date);
+    if(k) swings.push(k.weight_kg - m.weight_kg);
+  });
+  if(swings.length){
+    const avgSwing = swings.reduce((a,b)=>a+b,0) / swings.length;
+    addStat(grid, 'kvall', 'Snitt dygnssvängning', (avgSwing>=0?'+':'')+avgSwing.toFixed(1)+' kg', swings.length+' dagar med båda mätningarna');
+  } else {
+    addStat(grid, 'kvall', 'Snitt dygnssvängning', '–', 'behöver morgon+kväll samma dag');
+  }
 }
 
 function addStat(grid, cls, label, value, sub){
@@ -501,23 +560,34 @@ function addStat(grid, cls, label, value, sub){
 // ---------- Chart ----------
 
 function renderChart(){
-  const morgon = seriesFor('morgon');
-  const kvall = seriesFor('kväll');
-  const maM = movingAverage(morgon);
-  const maK = movingAverage(kvall);
-  const reg = linearRegression(maM);
+  const morgonAll = seriesFor('morgon');
+  const kvallAll = seriesFor('kväll');
 
-  // Unified date axis
-  const allDates = Array.from(new Set([...maM.map(p=>p.date), ...maK.map(p=>p.date)])).sort();
+  // Glidande snitt beräknas alltid på FULL historik (annars blir 7-dagarssnittet
+  // fel i början av ett filtrerat fönster). Filtrering sker efter beräkning.
+  const maMAll = movingAverage(morgonAll);
+  const maKAll = movingAverage(kvallAll);
+  const reg = linearRegression(maMAll);
 
-  const morgonData = allDates.map(d => { const p = maM.find(x=>x.date===d); return p ? p.value : null; });
-  const kvallData = allDates.map(d => { const p = maK.find(x=>x.date===d); return p ? p.value : null; });
+  const from = document.getElementById('f-from').value;
+  const to = document.getElementById('f-to').value;
+  const typeFilter = document.getElementById('f-type').value;
+  const inRange = d => (!from || d >= from) && (!to || d <= to);
 
-  // Forecast line: from last morgon MA point to target (or 60 days ahead if no target)
+  const showMorgon = typeFilter === 'all' || typeFilter === 'morgon';
+  const showKvall = typeFilter === 'all' || typeFilter === 'kväll';
+
+  const rawMorgon = morgonAll.filter(e => inRange(e.date));
+  const rawKvall = kvallAll.filter(e => inRange(e.date));
+  const maM = maMAll.filter(p => inRange(p.date));
+  const maK = maKAll.filter(p => inRange(p.date));
+
+  // Prognosen utgår alltid från senaste faktiska morgonpunkten och pekar
+  // framåt i tiden, oavsett vilket historiskt intervall du just nu filtrerar på.
   let forecastLabels = [];
   let forecastData = [];
-  if(reg && maM.length >= 4){
-    const lastPoint = maM[maM.length-1];
+  if(showMorgon && reg && maMAll.length >= 4){
+    const lastPoint = maMAll[maMAll.length-1];
     let endOrdinal = lastPoint.ordinal + 60;
     if(targetWeight != null && reg.slope < 0){
       const targetOrdinal = (targetWeight - reg.intercept) / reg.slope;
@@ -532,26 +602,40 @@ function renderChart(){
     }
   }
 
-  const combinedLabels = Array.from(new Set([...allDates, ...forecastLabels])).sort();
-  const morgonAligned = combinedLabels.map(d => { const i = allDates.indexOf(d); return i>=0 ? morgonData[i] : null; });
-  const kvallAligned = combinedLabels.map(d => { const i = allDates.indexOf(d); return i>=0 ? kvallData[i] : null; });
-  const forecastAligned = combinedLabels.map(d => { const i = forecastLabels.indexOf(d); return i>=0 ? forecastData[i] : null; });
+  const combinedLabels = Array.from(new Set([
+    ...rawMorgon.map(e=>e.date), ...rawKvall.map(e=>e.date),
+    ...maM.map(p=>p.date), ...maK.map(p=>p.date),
+    ...forecastLabels
+  ])).sort();
+
+  const alignRaw = (series, dateKey='date', valKey='weight_kg') =>
+    combinedLabels.map(d => { const e = series.find(x=>x[dateKey]===d); return e ? e[valKey] : null; });
+  const alignMA = (series) =>
+    combinedLabels.map(d => { const p = series.find(x=>x.date===d); return p ? p.value : null; });
+  const alignForecast = () =>
+    combinedLabels.map(d => { const i = forecastLabels.indexOf(d); return i>=0 ? forecastData[i] : null; });
+
+  const datasets = [];
+  if(showMorgon){
+    datasets.push({ label:'Morgon (faktisk)', data: alignRaw(rawMorgon), borderColor:'#F3C583', backgroundColor:'#F3C583', tension:0.2, spanGaps:false, pointRadius:3, borderWidth:1.5 });
+    datasets.push({ label:'Morgon (7d-snitt)', data: alignMA(maM), borderColor:'#E8A33D', backgroundColor:'#E8A33D', tension:0.3, spanGaps:true, pointRadius:0, borderWidth:3 });
+  }
+  if(showKvall){
+    datasets.push({ label:'Kväll (faktisk)', data: alignRaw(rawKvall), borderColor:'#9CA9DD', backgroundColor:'#9CA9DD', tension:0.2, spanGaps:false, pointRadius:3, borderWidth:1.5 });
+    datasets.push({ label:'Kväll (7d-snitt)', data: alignMA(maK), borderColor:'#3B4C8C', backgroundColor:'#3B4C8C', tension:0.3, spanGaps:true, pointRadius:0, borderWidth:3 });
+  }
+  if(forecastLabels.length){
+    datasets.push({ label:'Prognos', data: alignForecast(), borderColor:'#5E8B76', backgroundColor:'#5E8B76', borderDash:[6,4], tension:0, spanGaps:true, pointRadius:0, borderWidth:2 });
+  }
 
   if(chart) chart.destroy();
   const ctx = document.getElementById('chart').getContext('2d');
   chart = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels: combinedLabels,
-      datasets: [
-        { label:'Morgon (7d-snitt)', data: morgonAligned, borderColor:'#E8A33D', backgroundColor:'#E8A33D', tension:0.3, spanGaps:true, pointRadius:2, borderWidth:2 },
-        { label:'Kväll (7d-snitt)', data: kvallAligned, borderColor:'#3B4C8C', backgroundColor:'#3B4C8C', tension:0.3, spanGaps:true, pointRadius:2, borderWidth:2 },
-        { label:'Prognos', data: forecastAligned, borderColor:'#5E8B76', backgroundColor:'#5E8B76', borderDash:[6,4], tension:0, spanGaps:true, pointRadius:0, borderWidth:2 }
-      ]
-    },
+    data: { labels: combinedLabels, datasets },
     options: {
       responsive:true,
-      plugins:{ legend:{ display:false } },
+      plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{size:11} } } },
       scales:{ y:{ title:{display:true, text:'kg'} } },
       interaction:{ mode:'index', intersect:false }
     }
@@ -598,7 +682,7 @@ function renderTable(){
   });
 }
 
-init();
+// init() anropas nu bara efter godkänt lösenord (se checkPassword ovan)
 </script>
 </body>
 </html>

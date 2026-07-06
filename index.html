@@ -147,6 +147,13 @@
   .legend{display:flex;gap:16px;margin-bottom:10px;font-size:0.78rem;color:var(--ink-soft);}
   .legend span{display:inline-flex;align-items:center;gap:5px;}
   .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .chart-toggles{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .chart-toggles button{
+    padding:8px 14px;border-radius:20px;border:1.5px solid var(--line);
+    background:#fff;font-family:inherit;font-size:0.8rem;font-weight:600;
+    color:var(--ink-soft);cursor:pointer;transition:all .15s;
+  }
+  .chart-toggles button.active{background:var(--ink);color:#fff;border-color:var(--ink);}
 
   /* Filters / table */
   .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
@@ -237,6 +244,11 @@
   <!-- Chart -->
   <div class="card">
     <h2>Trend</h2>
+    <div class="chart-toggles" id="chart-toggles">
+      <button type="button" data-toggle="raw" class="active">Faktiska värden</button>
+      <button type="button" data-toggle="ma" class="active">Glidande snitt</button>
+      <button type="button" data-toggle="forecast" class="active">Prognos</button>
+    </div>
     <canvas id="chart" height="220"></canvas>
   </div>
 
@@ -337,6 +349,7 @@ let entries = [];      // {id, date, time_of_day, weight_kg, note}
 let targetWeight = null;
 let chart = null;
 let selectedType = 'morgon';
+let showRaw = true, showMA = true, showForecast = true;
 const weekdayNames = ['Sön','Mån','Tis','Ons','Tor','Fre','Lör'];
 let activeWeekdays = new Set([0,1,2,3,4,5,6]);
 
@@ -364,7 +377,21 @@ function init(){
   document.getElementById('f-type').addEventListener('change', () => { renderTable(); renderChart(); });
 
   buildWeekdayPicker();
+  buildChartToggles();
   loadAll();
+}
+
+function buildChartToggles(){
+  document.querySelectorAll('#chart-toggles button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      const key = btn.dataset.toggle;
+      if(key === 'raw') showRaw = btn.classList.contains('active');
+      if(key === 'ma') showMA = btn.classList.contains('active');
+      if(key === 'forecast') showForecast = btn.classList.contains('active');
+      renderChart();
+    });
+  });
 }
 
 function setType(t){
@@ -586,7 +613,7 @@ function renderChart(){
   // framåt i tiden, oavsett vilket historiskt intervall du just nu filtrerar på.
   let forecastLabels = [];
   let forecastData = [];
-  if(showMorgon && reg && maMAll.length >= 4){
+  if(showMorgon && showForecast && reg && maMAll.length >= 4){
     const lastPoint = maMAll[maMAll.length-1];
     let endOrdinal = lastPoint.ordinal + 60;
     if(targetWeight != null && reg.slope < 0){
@@ -616,12 +643,16 @@ function renderChart(){
     combinedLabels.map(d => { const i = forecastLabels.indexOf(d); return i>=0 ? forecastData[i] : null; });
 
   const datasets = [];
-  if(showMorgon){
+  if(showMorgon && showRaw){
     datasets.push({ label:'Morgon (faktisk)', data: alignRaw(rawMorgon), borderColor:'#F3C583', backgroundColor:'#F3C583', tension:0.2, spanGaps:false, pointRadius:3, borderWidth:1.5 });
+  }
+  if(showMorgon && showMA){
     datasets.push({ label:'Morgon (7d-snitt)', data: alignMA(maM), borderColor:'#E8A33D', backgroundColor:'#E8A33D', tension:0.3, spanGaps:true, pointRadius:0, borderWidth:3 });
   }
-  if(showKvall){
+  if(showKvall && showRaw){
     datasets.push({ label:'Kväll (faktisk)', data: alignRaw(rawKvall), borderColor:'#9CA9DD', backgroundColor:'#9CA9DD', tension:0.2, spanGaps:false, pointRadius:3, borderWidth:1.5 });
+  }
+  if(showKvall && showMA){
     datasets.push({ label:'Kväll (7d-snitt)', data: alignMA(maK), borderColor:'#3B4C8C', backgroundColor:'#3B4C8C', tension:0.3, spanGaps:true, pointRadius:0, borderWidth:3 });
   }
   if(forecastLabels.length){
@@ -656,7 +687,11 @@ function renderTable(){
     const weekday = new Date(e.date+'T00:00:00').getDay();
     if(!activeWeekdays.has(weekday)) return false;
     return true;
-  }).sort((a,b)=> b.date.localeCompare(a.date));
+}).sort((a,b)=> {
+    if(a.date !== b.date) return b.date.localeCompare(a.date);
+    if(a.time_of_day === b.time_of_day) return 0;
+    return a.time_of_day === 'kväll' ? -1 : 1;
+  });
 
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
